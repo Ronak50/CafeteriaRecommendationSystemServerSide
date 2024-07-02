@@ -2,6 +2,7 @@
 using MySql.Data.MySqlClient;
 using System;
 using System.Text;
+using System.IO;
 
 namespace CafeteriaRecommendationSystem.Services
 {
@@ -19,12 +20,69 @@ namespace CafeteriaRecommendationSystem.Services
                     return DeleteMenuItem(parameters);
                 case "viewitems":
                     return ViewMenuItems();
-                case "":
-                    return "";
+                case "dicardmenuitems":
+                    return DiscardMenuItemList();
                 default:
                     return "Please enter a valid option.";
             }
         }
+
+        public static string DiscardMenuItemList()
+        {
+            try
+            {
+                using (MySqlConnection connection = DatabaseUtility.GetConnection())
+                {
+                    connection.Open();
+                    var negativeWords = File.ReadAllLines(@"C:\Users\ronak.sharma\source\repos\CafeteriaRecommendationSystem\CafeteriaRecommendationSystem\Data\negative_words.txt");
+
+                    var likeClauses = new StringBuilder();
+                    foreach (var word in negativeWords)
+                    {
+                        if (likeClauses.Length > 0)
+                        {
+                            likeClauses.Append(" OR ");
+                        }
+                        likeClauses.Append($"s.CommentSentiments LIKE '%{word}%'");
+                    }
+
+                    string query = "SELECT i.ItemId, i.Name, s.OverallRating, s.CommentSentiments FROM Item i INNER JOIN Sentiment s ON i.ItemId = s.ItemId WHERE s.OverallRating < 2 AND (" + likeClauses.ToString() + ")";
+
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, connection))
+                    {
+                        using (MySqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            if (!reader.HasRows)
+                            {
+                                return "Discard Menu Item List";
+                            }
+
+                            var result = new StringBuilder();
+                            result.AppendLine("\nItems to be discarded:");
+                            result.AppendLine("------------------------------------------------------------------------------");
+                            result.AppendLine($"{"ItemId",-10} {"Name",-25} {"OverallRating",-15} {"CommentSentiments"}");
+                            result.AppendLine("------------------------------------------------------------------------------");
+
+                            while (reader.Read())
+                            {
+                                result.AppendLine(
+                                $"{reader.GetInt32("ItemId"),-10} " +
+                                $"{reader.GetString("Name"),-25} " +
+                                $"{reader.GetFloat("OverallRating"),-15} " +
+                                $"{reader.GetString("CommentSentiments")}");
+                            }
+                            return result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return "Error retrieving discard menu items: " + ex.Message;
+            }
+        }
+
 
         public static string AddMenuItem(string parameters)
         {
@@ -75,12 +133,11 @@ namespace CafeteriaRecommendationSystem.Services
                     }
 
                     string notificationMessage = $"Item '{name}' added to the menu.";
-                    string insertNotificationQuery = "INSERT INTO Notification (Message, NotificationDate, ItemId) VALUES (@Message, @NotificationDate,@ItemId)";
+                    string insertNotificationQuery = "INSERT INTO Notification (Message, NotificationDate) VALUES (@Message, @NotificationDate)";
                     using (MySqlCommand insertNotificationCmd = new MySqlCommand(insertNotificationQuery, connection))
                     {
                         insertNotificationCmd.Parameters.AddWithValue("@Message", notificationMessage);
                         insertNotificationCmd.Parameters.AddWithValue("@NotificationDate", DateTime.Now);
-                        insertNotificationCmd.Parameters.AddWithValue("@ItemId", itemId);
                         insertNotificationCmd.ExecuteNonQuery();
                     }
                     return "Admin: Item added successfully";
@@ -209,11 +266,22 @@ namespace CafeteriaRecommendationSystem.Services
                         {
                             if (reader.HasRows)
                             {
-                                StringBuilder result = new StringBuilder("\nItems List: \n");
+                                StringBuilder result = new StringBuilder();
+                                result.AppendLine("\nItems List:");
+                                result.AppendLine("--------------------------------------------------------------------");
+                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-12} {"Availability",-15} {"Meal Type",-12}");
+                                result.AppendLine("--------------------------------------------------------------------");
+
                                 while (reader.Read())
                                 {
-                                    result.AppendLine($"ID: {reader["ItemId"]}, Name: {reader["Name"]}, Price: {reader["Price"]}, Availability: {reader["AvailabilityStatus"]}, Meal Type: {reader["MealType"]}");
+                                    result.AppendLine($"{reader.GetInt32("ItemId"),-5} " +
+                                                       $"{reader.GetString("Name"),-20} " +
+                                                       $"Rs. {reader.GetDecimal("Price"),-12:f2} " +
+                                                       $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-15} " +
+                                                       $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-12}");
                                 }
+                                result.AppendLine("--------------------------------------------------------------------\n");
+                                result.AppendLine("--------------------------------------------------------------------");
                                 return result.ToString();
                             }
                             else

@@ -19,7 +19,6 @@ namespace CafeteriaRecommendationSystem.ClientHandler
 
             LoginService sessionManager = new LoginService();
             UserSessionInfo currentSessionInfo = null;
-            //int currentSessionId = 0;
             string currentEmail = string.Empty;
             string response;
 
@@ -39,27 +38,33 @@ namespace CafeteriaRecommendationSystem.ClientHandler
                     if (result.Success && action == "")
                     {
                         response = $"Login successful as {result.Role} with UserId {result.UserId}.";
-                        byte[] responseData = Encoding.ASCII.GetBytes(response);
-                        stream.Write(responseData, 0, responseData.Length);
 
                         currentSessionInfo = sessionManager.LogUserLogin(result.UserId);
                         DateTime currentLoginTime = currentSessionInfo.LoginTime;
                         currentEmail = email;
 
-                        DateTime lastLoginTime = sessionManager.GetLastLoginTime(result.UserId, currentLoginTime);
-                        var notifications = sessionManager.GetUnreadNotifications(lastLoginTime);
-
+                        DateTime? lastLoginTime = sessionManager.GetLastLoginTime(result.UserId, currentLoginTime);
                         StringBuilder notificationResponse = new StringBuilder();
-                        notificationResponse.AppendLine("Notifications:");
 
-                        for (int i = 0; i < notifications.Count; i++)
-                        {
-                            notificationResponse.AppendLine($"{i + 1}. {notifications[i]}");
+                        if (result.Role == "Employee")
+                        { 
+                            var notifications = sessionManager.GetUnreadNotifications(lastLoginTime);
+
+                            if (notifications.Count != 0)
+                            {
+                                notificationResponse.AppendLine("\nNotifications:");
+                            }
+
+                            for (int i = 0; i < notifications.Count; i++)
+                            {
+                                notificationResponse.AppendLine($"{i + 1}. {notifications[i]}");
+                            }
                         }
 
-                        response = notificationResponse.ToString();
-                        responseData = Encoding.ASCII.GetBytes(response);
+                        response += notificationResponse.ToString();
+                        byte[] responseData = Encoding.ASCII.GetBytes(response);
                         stream.Write(responseData, 0, responseData.Length);
+
                     }
 
                     else if (action.ToLower() == "logout")

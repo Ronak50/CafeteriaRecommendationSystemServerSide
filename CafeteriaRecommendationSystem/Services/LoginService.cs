@@ -90,7 +90,7 @@ namespace CafeteriaRecommendationSystem.Services
             }
         }
 
-        public List<string> GetUnreadNotifications(DateTime lastLoginTime)
+        public List<string> GetUnreadNotifications(DateTime? lastLoginTime)
         {
             List<string> notifications = new List<string>();
             using (MySqlConnection conn = DatabaseUtility.GetConnection())
@@ -119,17 +119,25 @@ namespace CafeteriaRecommendationSystem.Services
             return notifications;
         }
 
-    public DateTime GetLastLoginTime(int userId, DateTime currentLoginTime)
+    public DateTime? GetLastLoginTime(int userId, DateTime currentLoginTime)
         {
             using (MySqlConnection conn = DatabaseUtility.GetConnection())
             {
                 conn.Open();
-                string selectLastLoginTimeQuery = @"SELECT MAX(LoginTime) FROM UserSession WHERE UserID = @UserID AND LoginTime <> @CurrentLoginTime"; ;
+                string selectLastLoginTimeQuery = @"SELECT MAX(LoginTime) FROM UserSession WHERE UserID = @UserID AND LoginTime <> @CurrentLoginTime";
                 MySqlCommand cmd = new MySqlCommand(selectLastLoginTimeQuery, conn);
                 cmd.Parameters.AddWithValue("@UserID", userId);
                 cmd.Parameters.AddWithValue("@CurrentLoginTime", currentLoginTime);
+
                 var result = cmd.ExecuteScalar();
-                return result == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(result);
+                if (result == DBNull.Value || result == null)
+                {
+                    return null;
+                }
+                else
+                {
+                    return Convert.ToDateTime(result);
+                }
             }
         }
     }

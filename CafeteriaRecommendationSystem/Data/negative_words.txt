@@ -18,3 +18,5 @@ Highly unsatisfactory
 sad
 angry
 not good
+not
+tasteless
