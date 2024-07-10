@@ -2,6 +2,7 @@
 using System;
 using System.Text;
 using System.IO;
+using CafeteriaRecommendationSystem.Models;
 
 namespace CafeteriaRecommendationSystem.Services
 {
@@ -63,7 +64,6 @@ namespace CafeteriaRecommendationSystem.Services
                 {
                     connection.Open();
                     var negativeWords = File.ReadAllLines(@"C:\Users\ronak.sharma\source\repos\CafeteriaRecommendationSystem\CafeteriaRecommendationSystem\Data\negative_words.txt");
-
                     var likeClauses = new StringBuilder();
                     foreach (var word in negativeWords)
                     {
@@ -112,17 +112,44 @@ namespace CafeteriaRecommendationSystem.Services
             }
         }
 
-        public static string RemoveFoodItem(string itemName)
+        public static string GetItemNameById(string itemId)
+        {
+                using (MySqlConnection connection = DatabaseUtility.GetConnection())
+                {
+                    connection.Open();
+                    string selectQuery = "SELECT Name FROM Item WHERE ItemId = @ItemId";
+                    using (MySqlCommand cmd = new MySqlCommand(selectQuery, connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ItemId", itemId);
+                        object result = cmd.ExecuteScalar();
+                        if (result != null)
+                        {
+                            return result.ToString();
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                    }
+                }
+        }
+
+        public static string RemoveFoodItem(string itemId)
         {
             try
             {
+                string itemName = GetItemNameById(itemId);
+                if (itemName == null)
+                {
+                    return $"Item with ID '{itemId}' not found.";
+                }
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
                     string deleteQuery = "DELETE FROM Item WHERE Name = @ItemName";
                     using (MySqlCommand cmd = new MySqlCommand(deleteQuery, connection))
                     {
-                        cmd.Parameters.AddWithValue("@ItemName", itemName);
+                        cmd.Parameters.AddWithValue("@ItemName", itemId);
                         int rowsAffected = cmd.ExecuteNonQuery();
                         if (rowsAffected > 0)
                         {
@@ -140,10 +167,15 @@ namespace CafeteriaRecommendationSystem.Services
                 return "Error removing item: " + ex.Message;
             }
         }
-        public static string InsertFeedbackNotification(string itemName)
+        public static string InsertFeedbackNotification(string itemId)
         {
             try
             {
+                string itemName = GetItemNameById(itemId);
+                if (itemName == null)
+                {
+                    return $"Item with ID '{itemId}' not found.";
+                }
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
@@ -164,10 +196,7 @@ namespace CafeteriaRecommendationSystem.Services
                 return "Error inserting feedback into notification table: " + ex.Message;
             }
         }
-
-
-
-public static string ViewEmployeeVote()
+        public static string ViewEmployeeVote()
         {
             try
             {
@@ -234,8 +263,6 @@ public static string ViewEmployeeVote()
                     MySqlCommand command = new MySqlCommand(insertQuery, connection);
                     command.Parameters.AddWithValue("@ItemId", itemId);
                     command.Parameters.AddWithValue("@SentimentId", sentimentId);
-
-
                     string notificationMessage = $"Chef Roll out today Menu";
                     string insertNotificationQuery = "INSERT INTO Notification (Message, NotificationDate) VALUES (@Message, @NotificationDate)";
                     using (MySqlCommand insertNotificationCmd = new MySqlCommand(insertNotificationQuery, connection))
@@ -295,11 +322,11 @@ public static string ViewEmployeeVote()
         public static string RecEngineGetFoodItemForNextDay(string menuType, int returnItemListSize)
         {
             var recommendedItems = new StringBuilder();
-            string query = $@"SELECT s.ItemId, s.OverallRating, s.SentimentScore, s.VoteCount FROM Sentiment s JOIN Item i ON s.ItemId = i.ItemId
-            JOIN MealType m ON i.MealTypeId = m.meal_type_id
-            WHERE m.Type = @MenuType
-            ORDER BY s.OverallRating DESC, s.SentimentScore DESC, s.VoteCount DESC
-            LIMIT {returnItemListSize}";
+            string query = "SELECT s.ItemId, s.OverallRating, s.SentimentScore, s.VoteCount FROM Sentiment s JOIN Item i ON s.ItemId = i.ItemId " +
+                           "JOIN MealType m ON i.MealTypeId = m.meal_type_id " +
+                           "WHERE m.MealType = @MenuType " +
+                           "ORDER BY s.OverallRating DESC, s.SentimentScore DESC, s.VoteCount DESC " +
+                           "LIMIT @ReturnItemListSize";
 
             try
             {
@@ -309,6 +336,7 @@ public static string ViewEmployeeVote()
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
                         cmd.Parameters.AddWithValue("@MenuType", menuType);
+                        cmd.Parameters.AddWithValue("@ReturnItemListSize", returnItemListSize);
 
                         using (MySqlDataReader reader = cmd.ExecuteReader())
                         {
@@ -352,8 +380,7 @@ public static string ViewEmployeeVote()
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
-                    string query = "SELECT i.ItemId, i.Name, i.Price, i.AvailabilityStatus, m.type AS MealType " +
-                                   "FROM Item i " +
+                    string query = "SELECT i.ItemId, i.Name, i.Price, i.AvailabilityStatus, m.MealType AS MealType, i.DietPreference, i.SpiceLevel, i.FoodPreference, i.SweetTooth FROM Item i " +
                                    "INNER JOIN MealType m ON i.MealTypeId = m.meal_type_id " +
                                    "ORDER BY i.ItemId";
 
@@ -365,9 +392,9 @@ public static string ViewEmployeeVote()
                             {
                                 StringBuilder result = new StringBuilder();
                                 result.AppendLine("\nItems List:");
-                                result.AppendLine("--------------------------------------------------------------------------------------");
-                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-12} {"Availability",-15} {"Meal Type",-12}");
-                                result.AppendLine("--------------------------------------------------------------------------------------");
+                                result.AppendLine("------------------------------------------------------------------------------------------------------------------------------");
+                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-12} {"Availability",-15} {"Meal Type",-12} {"Diet Preference",-20} {"Spice Level",-12} {"Food Preference",-20} {"Sweet Tooth",-12}");
+                                result.AppendLine("------------------------------------------------------------------------------------------------------------------------------");
 
                                 while (reader.Read())
                                 {
@@ -376,8 +403,12 @@ public static string ViewEmployeeVote()
                                         $"{reader.GetString("Name"),-20} " +
                                         $"Rs. {reader.GetDecimal("Price"),-10:f2} " +
                                         $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-15} " +
-                                        $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-12}");
-                                }
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-12}" +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("DietPreference")) ? "N/A" : reader.GetString("DietPreference")),-20} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SpiceLevel")) ? "N/A" : reader.GetString("SpiceLevel")),-12} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("FoodPreference")) ? "N/A" : reader.GetString("FoodPreference")),-20} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? "N/A" : reader.GetString("SweetTooth")),-12}");
+                            }
 
                                 return result.ToString();
                             }
@@ -399,26 +430,25 @@ public static string ViewEmployeeVote()
 
         public static string ViewFeedback()
         {
-            string connectionString = "Server=localhost;Database=cafeteriarecommenderdb;User ID=root;Password=ronak5840R!;Port=3306";
 
             try
             {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
-                    conn.Open();
+                    connection.Open();
                     string query = "SELECT f.FeedbackId, f.UserId, f.ItemId, i.Name AS ItemName, f.Comment, f.Rating, f.FeedbackDate " +
                                    "FROM Feedback f " +
                                    "JOIN User u ON f.UserId = u.UserId " +
                                    "JOIN Item i ON f.ItemId = i.ItemId " +
                                    "WHERE f.FeedbackDate >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
 
-                    using (MySqlCommand command = new MySqlCommand(query, conn))
+                    using (MySqlCommand command = new MySqlCommand(query, connection))
                     {
                         StringBuilder feedbackList = new StringBuilder();
                         feedbackList.AppendLine("\nLast One Day Feedback:");
-                        feedbackList.AppendLine("---------------------------------------------------------------------------------------------------------------------");
+                        feedbackList.AppendLine("---------------------------------------------------------------------------------------------------------------------------");
                         feedbackList.AppendLine($"{"Feedback ID",-12} {"Item",-15} {"Comment",-50} {"Rating",-10} {"Date",-30}");
-                        feedbackList.AppendLine("---------------------------------------------------------------------------------------------------------------------");
+                        feedbackList.AppendLine("---------------------------------------------------------------------------------------------------------------------------");
 
                         using (MySqlDataReader reader = command.ExecuteReader())
                         {
@@ -445,4 +475,3 @@ public static string ViewEmployeeVote()
     }
 
 }
-

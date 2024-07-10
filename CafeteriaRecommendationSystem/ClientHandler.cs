@@ -14,7 +14,7 @@ namespace CafeteriaRecommendationSystem.ClientHandler
 
             TcpClient client = (TcpClient)obj;
             NetworkStream stream = client.GetStream();
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[8192];
             int byteCount;
 
             LoginService sessionManager = new LoginService();
@@ -120,5 +120,4 @@ namespace CafeteriaRecommendationSystem.ClientHandler
                 }
             }
         }
-        }
-    
+}

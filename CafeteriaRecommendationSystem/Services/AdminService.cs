@@ -20,7 +20,7 @@ namespace CafeteriaRecommendationSystem.Services
                     return DeleteMenuItem(parameters);
                 case "viewitems":
                     return ViewMenuItems();
-                case "dicardmenuitems":
+                case "discardmenuitems":
                     return DiscardMenuItemList();
                 default:
                     return "Please enter a valid option.";
@@ -83,11 +83,10 @@ namespace CafeteriaRecommendationSystem.Services
             }
         }
 
-
         public static string AddMenuItem(string parameters)
         {
             string[] paramParts = parameters.Split(';');
-            if (paramParts.Length < 4)
+            if (paramParts.Length < 8)
             {
                 return "Admin: Invalid parameters for adding item";
             }
@@ -96,6 +95,10 @@ namespace CafeteriaRecommendationSystem.Services
             decimal price;
             bool availabilityStatus;
             string mealType = paramParts[3];
+            string dietPreference = paramParts[4];
+            string spiceLevel = paramParts[5];
+            string foodPreference = paramParts[6];
+            string sweetTooth = paramParts[7];
 
             if (!decimal.TryParse(paramParts[1], out price) || !bool.TryParse(paramParts[2], out availabilityStatus))
             {
@@ -121,13 +124,18 @@ namespace CafeteriaRecommendationSystem.Services
                     }
 
                     int itemId;
-                    string query = "INSERT INTO Item (Name, Price, AvailabilityStatus, MealTypeId) VALUES (@Name, @Price, @AvailabilityStatus,@MealTypeId)";
+                    string query = "INSERT INTO Item (Name, Price, AvailabilityStatus, MealTypeId, DietPreference, SpiceLevel, FoodPreference, SweetTooth)"+
+                        "VALUES (@Name, @Price, @AvailabilityStatus,@MealTypeId, @DietPreference, @SpiceLevel, @FoodPreference, @SweetTooth)";
                     using (MySqlCommand command = new MySqlCommand(query, connection))
                     {
                         command.Parameters.AddWithValue("@Name", name);
                         command.Parameters.AddWithValue("@Price", price);
                         command.Parameters.AddWithValue("@AvailabilityStatus", availabilityStatus);
                         command.Parameters.AddWithValue("@MealTypeId", mealTypeId);
+                        command.Parameters.AddWithValue("@DietPreference", dietPreference);
+                        command.Parameters.AddWithValue("@SpiceLevel", spiceLevel);
+                        command.Parameters.AddWithValue("@FoodPreference", foodPreference);
+                        command.Parameters.AddWithValue("@SweetTooth", sweetTooth);
                         command.ExecuteNonQuery();
                         itemId = (int)command.LastInsertedId;
                     }
@@ -153,18 +161,16 @@ namespace CafeteriaRecommendationSystem.Services
         public static string UpdateMenuItem(string parameters)
         {
             string[] paramParts = parameters.Split(';');
-            if (paramParts.Length < 5)
+            if (paramParts.Length < 3)
             {
                 return "Admin: Invalid parameters for updating item";
             }
 
             int itemId;
-            string name = paramParts[1];
             decimal price;
             bool availabilityStatus;
-            string mealType = paramParts[4];
 
-            if (!int.TryParse(paramParts[0], out itemId) || !decimal.TryParse(paramParts[2], out price) || !bool.TryParse(paramParts[3], out availabilityStatus))
+            if (!int.TryParse(paramParts[0], out itemId) || !decimal.TryParse(paramParts[1], out price) || !bool.TryParse(paramParts[2], out availabilityStatus))
             {
                 return "Admin: Invalid parameters for updating item";
             }
@@ -174,27 +180,12 @@ namespace CafeteriaRecommendationSystem.Services
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
-                    int mealTypeId;
-                    string getMealTypeIdQuery = "SELECT meal_type_id FROM MealType WHERE type = @Type";
-                    using (MySqlCommand getMealTypeIdCmd = new MySqlCommand(getMealTypeIdQuery, connection))
-                    {
-                        getMealTypeIdCmd.Parameters.AddWithValue("@Type", mealType);
-                        object result = getMealTypeIdCmd.ExecuteScalar();
-                        if (result == null)
-                        {
-                            return "Admin: Invalid meal type";
-                        }
-                        mealTypeId = Convert.ToInt32(result);
-                    }
-
-                    string query = "UPDATE Item SET Name = @Name, Price = @Price, AvailabilityStatus = @AvailabilityStatus, MealTypeId = @MealTypeId WHERE ItemId = @ItemId";
+                    string query = "UPDATE Item SET Price = @Price, AvailabilityStatus = @AvailabilityStatus WHERE ItemId = @ItemId";
                     using (MySqlCommand command = new MySqlCommand(query, connection))
                     {
                         command.Parameters.AddWithValue("@ItemId", itemId);
-                        command.Parameters.AddWithValue("@Name", name);
                         command.Parameters.AddWithValue("@Price", price);
                         command.Parameters.AddWithValue("@AvailabilityStatus", availabilityStatus);
-                        command.Parameters.AddWithValue("@MealTypeId", mealTypeId);
                         command.ExecuteNonQuery();
                         return "Admin: Item updated successfully";
                     }
@@ -255,10 +246,10 @@ namespace CafeteriaRecommendationSystem.Services
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
-                    string query = "SELECT i.ItemId, i.Name, i.Price, i.AvailabilityStatus, m.type AS MealType " +
-                               "FROM Item i " +
-                               "INNER JOIN MealType m ON i.MealTypeId = m.meal_type_id " +
-                               "ORDER BY i.ItemId";
+                    string query = "SELECT i.ItemId, i.Name, i.Price, i.AvailabilityStatus, i.DietPreference, i.SpiceLevel, i.FoodPreference, i.SweetTooth, m.MealType AS MealType " +
+                        "FROM Item i " +
+                       "INNER JOIN MealType m ON i.MealTypeId = m.meal_type_id " +
+                       "ORDER BY i.ItemId";
 
                     using (MySqlCommand cmd = new MySqlCommand(query, connection))
                     {
@@ -268,20 +259,24 @@ namespace CafeteriaRecommendationSystem.Services
                             {
                                 StringBuilder result = new StringBuilder();
                                 result.AppendLine("\nItems List:");
-                                result.AppendLine("--------------------------------------------------------------------");
-                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-12} {"Availability",-15} {"Meal Type",-12}");
-                                result.AppendLine("--------------------------------------------------------------------");
+                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------------");
+                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-14} {"Availability",-20} {"Meal Type",-16} {"Diet",-13} {"Spice Level",-14} {"Food Preference",-20} {"Sweet Tooth",-10}");
+                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------------");
 
                                 while (reader.Read())
                                 {
-                                    result.AppendLine($"{reader.GetInt32("ItemId"),-5} " +
-                                                       $"{reader.GetString("Name"),-20} " +
-                                                       $"Rs. {reader.GetDecimal("Price"),-12:f2} " +
-                                                       $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-15} " +
-                                                       $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-12}");
+                                    result.AppendLine($"{reader.GetInt32("ItemId"),-5} " + 
+                                        $"{reader.GetString("Name"),-20} " +
+                                        $"Rs. {reader.GetDecimal("Price"),-14:f2} " +
+                                        $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-20} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-16}" +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("DietPreference")) ? "N/A" : reader.GetString("DietPreference")),-13} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SpiceLevel")) ? "N/A" : reader.GetString("SpiceLevel")),-14} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("FoodPreference")) ? "N/A" : reader.GetString("FoodPreference")),-20} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? "N/A" : reader.GetString("SweetTooth")),-10}");
                                 }
-                                result.AppendLine("--------------------------------------------------------------------\n");
-                                result.AppendLine("--------------------------------------------------------------------");
+                                result.AppendLine("-------------------------------------------------------------------------------------------------------------------------------------------------------\n");
+                                result.AppendLine("-------------------------------------------------------------------------------------------------------------------------------------------------------");
                                 return result.ToString();
                             }
                             else

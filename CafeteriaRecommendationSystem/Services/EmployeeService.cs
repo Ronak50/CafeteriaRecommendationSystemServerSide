@@ -1,10 +1,10 @@
 ﻿using CafeteriaRecommendationSystem.Models;
 using MySql.Data.MySqlClient;
+using Mysqlx.Crud;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 
 namespace CafeteriaRecommendationSystem.Services
@@ -22,11 +22,81 @@ namespace CafeteriaRecommendationSystem.Services
                     return GiveFeedback(parameters);
                 case "voteitem":
                     return GiveVoteForItem(parameters);
+                case "updateprofile":
+                    return UpdateUserProfile(parameters);
                 default:
                     return "Employee: Unknown action";
             }
         }
 
+        public static string UpdateUserProfile(string parameters)
+        {
+            string[] paramParts = parameters.Split(';');
+            if (paramParts.Length < 5)
+            {
+                return "Admin: Invalid parameters for updating profile";
+            }
+
+            int userId;
+            string dietPreference = paramParts[1];
+            string spicePreference = paramParts[2];
+            string foodPreference = paramParts[3];
+            string sweetToothPreference = paramParts[4];
+
+            if (!int.TryParse(paramParts[0], out userId))
+            {
+                return "Admin: Invalid user ID";
+            }
+
+            try
+            {
+                using (MySqlConnection connection = DatabaseUtility.GetConnection())
+                {
+                    connection.Open();
+
+                    string checkQuery = "SELECT COUNT(*) FROM UserPreference WHERE UserId = @UserId";
+                    using (MySqlCommand checkCommand = new MySqlCommand(checkQuery, connection))
+                    {
+                        checkCommand.Parameters.AddWithValue("@UserId", userId);
+                        int count = Convert.ToInt32(checkCommand.ExecuteScalar());
+
+                        if (count == 0)
+                        {
+                            string insertQuery = "INSERT INTO UserPreference (UserId, DietPreference, SpiceLevel, FoodPreference, SweetTooth) VALUES (@UserId, @DietPreference, @SpiceLevel, @FoodPreference, @SweetTooth)";
+                            using (MySqlCommand insertCommand = new MySqlCommand(insertQuery, connection))
+                            {
+                                insertCommand.Parameters.AddWithValue("@UserId", userId);
+                                insertCommand.Parameters.AddWithValue("@DietPreference", dietPreference);
+                                insertCommand.Parameters.AddWithValue("@SpiceLevel", spicePreference);
+                                insertCommand.Parameters.AddWithValue("@FoodPreference", foodPreference);
+                                insertCommand.Parameters.AddWithValue("@SweetTooth", sweetToothPreference);
+                                insertCommand.ExecuteNonQuery();
+                                return "Admin: Profile created successfully";
+                            }
+                        }
+                        else
+                        {
+                            string updateQuery = "UPDATE UserPreference SET DietPreference = @DietPreference, SpiceLevel = @SpiceLevel, FoodPreference = @FoodPreference, SweetTooth = @SweetTooth WHERE UserId = @UserId";
+                            using (MySqlCommand updateCommand = new MySqlCommand(updateQuery, connection))
+                            {
+                                updateCommand.Parameters.AddWithValue("@UserId", userId);
+                                updateCommand.Parameters.AddWithValue("@DietPreference", dietPreference);
+                                updateCommand.Parameters.AddWithValue("@SpiceLevel", spicePreference);
+                                updateCommand.Parameters.AddWithValue("@FoodPreference", foodPreference);
+                                updateCommand.Parameters.AddWithValue("@SweetTooth", sweetToothPreference);
+                                updateCommand.ExecuteNonQuery();
+                                return "Admin: Profile updated successfully";
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Database exception: " + ex.Message);
+                return "Admin: Failed to update profile";
+            }
+        }
 
         public static string ViewNotification()
         {
@@ -50,7 +120,7 @@ namespace CafeteriaRecommendationSystem.Services
                     }
                 }
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                   return $"An error occurred: {ex.Message}";
             }
@@ -70,6 +140,11 @@ namespace CafeteriaRecommendationSystem.Services
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
+                    if (!IsItemInMenu(connection, itemId))
+                    {
+                        return "ItemId is not available in the menu for the specified meal type.";
+                    }
+
                     string checkQuery = "SELECT COUNT(*) FROM EmployeeVote WHERE ItemId = @ItemId";
 
                     using (MySqlCommand checkCmd = new MySqlCommand(checkQuery, connection))
@@ -113,29 +188,50 @@ namespace CafeteriaRecommendationSystem.Services
             }
         }
 
-
-        public static string ViewMenu(string mealType)
+        public static string ViewMenu(string parameters)
+        {
+            string[] paramParts = parameters.Split(';');
+            int userId;
+            string mealType = paramParts[1];
+            if (!int.TryParse(paramParts[0], out userId))
             {
+                return "Admin: Invalid user ID";
+            }
+
             try
             {
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
                     string query = @"
-                    SELECT r.RecommendationId, r.ItemId, i.Name, i.Price, i.AvailabilityStatus, s.OverallRating, s.OverallCommentSentiment
+                    SELECT r.RecommendationId, r.ItemId, i.Name, i.Price, i.AvailabilityStatus, 
+                    s.OverallRating, s.OverallCommentSentiment, 
+                    i.DietPreference, i.SpiceLevel, i.FoodPreference, i.SweetTooth
                     FROM Recommendation r
                     JOIN Item i ON r.ItemId = i.ItemId
                     LEFT JOIN Sentiment s ON i.ItemId = s.ItemId
                     JOIN MealType mt ON i.MealTypeId = mt.meal_type_id
-                    WHERE mt.type = @MealType";
+                    JOIN UserPreference up ON up.UserId = @UserId
+                    WHERE mt.MealType = @MealType
+                    ORDER BY 
+                    CASE WHEN up.DietPreference = i.DietPreference THEN 1 ELSE 0 END DESC, 
+                    CASE WHEN up.SpiceLevel = i.SpiceLevel THEN 1 ELSE 0 END DESC, 
+                    CASE WHEN up.FoodPreference = i.FoodPreference THEN 1 ELSE 0 END DESC, 
+                    CASE WHEN up.SweetTooth = i.SweetTooth THEN 1 ELSE 0 END DESC";
 
                     using (MySqlCommand cmd = new MySqlCommand(query, connection))
                     {
+                        cmd.Parameters.AddWithValue("@UserId", userId);
                         cmd.Parameters.AddWithValue("@MealType", mealType);
                         using (MySqlDataReader reader = cmd.ExecuteReader())
                         {
+                            StringBuilder menuList = new StringBuilder();
+                            menuList.AppendLine("\nMenu Recommendations:");
+                            menuList.AppendLine("----------------------------------------------------------------------------------------------------------");
+                            menuList.AppendLine($"{"Recommendation ID",-20} {"Item ID",-10} {"Name",-25} {"Price",-10} {"Availability",-15} {"Rating",-10} {"Sentiment Comment",-20}");
+                            menuList.AppendLine("----------------------------------------------------------------------------------------------------------");
 
-                            if (reader.Read())
+                            while (reader.Read())
                             {
                                 int recommendationId = reader.GetInt32("RecommendationId");
                                 int itemId = reader.GetInt32("ItemId");
@@ -143,16 +239,12 @@ namespace CafeteriaRecommendationSystem.Services
                                 decimal price = reader.GetDecimal("Price");
                                 bool availabilityStatus = reader.GetBoolean("AvailabilityStatus");
                                 float overallRating = reader.GetFloat("OverallRating");
-                                string OverallCommentSentiment = reader.IsDBNull(reader.GetOrdinal("OverallCommentSentiment")) ? string.Empty : reader.GetString("OverallCommentSentiment");
-                                string priceString = $"Rs.{reader.GetDecimal("Price")}";
-                                string formattedLine = $"\nRecommendation ID: {recommendationId}, Item ID: {itemId}, Name: {itemName}, Price: {priceString}, Availability: {(availabilityStatus ? "Available" : "Not Available")}, Overall Rating: {overallRating}, Sentiment Comment: {OverallCommentSentiment}";
+                                string overallCommentSentiment = reader.IsDBNull(reader.GetOrdinal("OverallCommentSentiment")) ? string.Empty : reader.GetString("OverallCommentSentiment");
 
-                                return formattedLine;
+                                menuList.AppendLine($"{recommendationId,-20} {itemId,-10} {itemName,-25} Rs.{price,-10} {(availabilityStatus ? "Available" : "Not Available"),-15} {overallRating,-10} {overallCommentSentiment,-20}");
                             }
-                            else
-                            {
-                                return "No recommendations found for the specified meal type.";
-                            }
+
+                            return menuList.ToString();
                         }
                     }
                 }
@@ -161,6 +253,18 @@ namespace CafeteriaRecommendationSystem.Services
             {
                 Console.WriteLine("Database exception: " + ex.Message);
                 return "Failed to retrieve menu.";
+            }
+        }
+
+        public static bool IsItemInMenu(MySqlConnection connection, int itemId)
+        {
+            string query = "SELECT COUNT(*) FROM Item WHERE ItemId = @ItemId";
+
+            using (MySqlCommand cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                int count = Convert.ToInt32(cmd.ExecuteScalar());
+                return count > 0;
             }
         }
 
@@ -173,140 +277,39 @@ namespace CafeteriaRecommendationSystem.Services
                 int itemId = int.Parse(feedbackParams[1]);
                 string comment = feedbackParams[2];
                 int rating = int.Parse(feedbackParams[3]);
-
-                (string sentimentComment, float sentimentScore, string commentSentiments) = CalculateSentimentScore(comment);
-                using (MySqlConnection connection = DatabaseUtility.GetConnection())
+                
+                using (var connection = DatabaseUtility.GetConnection())
                 {
-                        connection.Open();
+                    connection.Open();
 
-                        bool itemExists = false;
-                        string checkItemQuery = "SELECT COUNT(*) FROM item WHERE ItemId = @ItemId";
-                        using (MySqlCommand checkCmd = new MySqlCommand(checkItemQuery, connection))
-                        {
-                            checkCmd.Parameters.AddWithValue("@ItemId", itemId);
-                            itemExists = Convert.ToInt32(checkCmd.ExecuteScalar()) > 0;
-                        }
-
-                        if (!itemExists)
-                        {
-                            return "Error: ItemId does not exist in the item table.";
-                        }
-
-                        string selectQuery = "SELECT SentimentId,OverallRating,SentimentScore FROM Sentiment WHERE ItemId = @ItemId";
-                        MySqlCommand selectCmd = new MySqlCommand(selectQuery, connection);
-                        selectCmd.Parameters.AddWithValue("@ItemId", itemId);
-                        MySqlDataReader reader = selectCmd.ExecuteReader();
-
-                        double existingOverallRating = 0.0;
-                        double existingSentimentScore = 0.0;
-                        int sentimentId = 0;
-                        if (reader.Read())
-                        {
-                            sentimentId = reader.GetInt32("SentimentId");
-                            if (!reader["OverallRating"].Equals(DBNull.Value))
-                            {
-                                existingOverallRating = Convert.ToDouble(reader["OverallRating"]);
-                            }
-
-                            if (!reader["SentimentScore"].Equals(DBNull.Value))
-                            {
-                                existingSentimentScore = Convert.ToDouble(reader["SentimentScore"]);
-                            }
-                        }
-                        reader.Close();
-
-                   
-
-                    string feedbackQuery = "INSERT INTO Feedback (UserId, ItemId, Comment, Rating, FeedbackDate) VALUES (@UserId, @ItemId, @Comment, @Rating, NOW())";
-                        using (MySqlCommand insertCmd = new MySqlCommand(feedbackQuery, connection))
-                        {
-                            insertCmd.Parameters.AddWithValue("@UserId", userId);
-                            insertCmd.Parameters.AddWithValue("@ItemId", itemId);
-                            insertCmd.Parameters.AddWithValue("@Comment", comment);
-                            insertCmd.Parameters.AddWithValue("@Rating", rating);
-                            insertCmd.ExecuteNonQuery();
-                        }
-
-                    string votedItemsQuery = "INSERT INTO voteditem (UserId, ItemId, VoteDate) VALUES (@UserId, @ItemId, NOW())";
-                    using (MySqlCommand insertCmd = new MySqlCommand(votedItemsQuery, connection))
+                    if (!ItemExists(connection, itemId))
                     {
-                        insertCmd.Parameters.AddWithValue("@UserId", userId);
-                        insertCmd.Parameters.AddWithValue("@ItemId", itemId);
-                        insertCmd.ExecuteNonQuery();
-                    }
-                    int voteCount = 1;
-                    string countQuery = "SELECT VoteCount FROM Sentiment WHERE ItemId = @ItemId";
-                    using (MySqlCommand countCmd = new MySqlCommand(countQuery, connection))
-                    {
-                        countCmd.Parameters.AddWithValue("@ItemId", itemId);
-                        var result = countCmd.ExecuteScalar();
-                        if (result != null && result != DBNull.Value)
-                        {
-                            voteCount = Convert.ToInt32(result) + 1;
-                        }
+                        return "ItemId does not exist in the item table.";
                     }
 
-                    float overallSentimentScore = 0, overallRating = 0;
-                    string existingCommentSentiments = string.Empty;
-                    if (sentimentId != 0)
-                        {
-                        string fetchCommentSentimentsQuery = "SELECT CommentSentiments FROM Sentiment WHERE ItemId = @ItemId";
-                        using (MySqlCommand fetchCmd = new MySqlCommand(fetchCommentSentimentsQuery, connection))
-                        {
-                            fetchCmd.Parameters.AddWithValue("@ItemId", itemId);
-                            existingCommentSentiments = fetchCmd.ExecuteScalar()?.ToString() ?? string.Empty;
-                        }
-                        if (!string.IsNullOrEmpty(existingCommentSentiments))
-                        {
-                            existingCommentSentiments += ", " + commentSentiments;
-                        }
-                        else
-                        {
-                            existingCommentSentiments = commentSentiments;
-                        }
-                        overallSentimentScore = (float)((existingSentimentScore + sentimentScore) / 2.0);
-                            overallRating = (float)((existingOverallRating + rating) / 2.0);
-                        if (overallSentimentScore > 0)
-                        {
-                            sentimentComment = "Positive";
-                        }
-                        else if (overallSentimentScore < 0)
-                        {
-                            sentimentComment = "Negative";
-                        }
-                        else
-                        {
-                            sentimentComment = "Neutral";
-                        }
-                        string updateQuery = "UPDATE Sentiment SET OverallRating = @OverallRating, OverallCommentSentiment = @OverallCommentSentiment, SentimentScore = @SentimentScore, VoteCount = @VoteCount, CommentSentiments = @CommentSentiments WHERE ItemId = @ItemId";
-                        using (MySqlCommand updateCmd = new MySqlCommand(updateQuery, connection))
-                        {
-                            updateCmd.Parameters.AddWithValue("@OverallRating", overallRating);
-                            updateCmd.Parameters.AddWithValue("@OverallCommentSentiment", sentimentComment);
-                            updateCmd.Parameters.AddWithValue("@SentimentScore", overallSentimentScore);
-                            updateCmd.Parameters.AddWithValue("@ItemId", itemId);
-                            updateCmd.Parameters.AddWithValue("@VoteCount", voteCount);
-                            updateCmd.Parameters.AddWithValue("@CommentSentiments", existingCommentSentiments);
-                            updateCmd.ExecuteNonQuery();
-                        }
-                        }
-                        else
-                        {
-                            string insertQuery = "INSERT INTO Sentiment (ItemId, OverallRating, OverallCommentSentiment, SentimentScore, VoteCount,CommentSentiments) VALUES (@ItemId, @OverallRating, @OverallCommentSentiment, @SentimentScore,@VoteCount,@CommentSentiments)";
-                            using (MySqlCommand insertCmd = new MySqlCommand(insertQuery, connection))
-                            {
-                                insertCmd.Parameters.AddWithValue("@ItemId", itemId);
-                                insertCmd.Parameters.AddWithValue("@OverallRating", rating);
-                                insertCmd.Parameters.AddWithValue("@OverallCommentSentiment", sentimentComment);
-                                insertCmd.Parameters.AddWithValue("@SentimentScore", sentimentScore);
-                                insertCmd.Parameters.AddWithValue("@CommentSentiments", commentSentiments);
-                                insertCmd.Parameters.AddWithValue("@VoteCount", voteCount);
-                                insertCmd.ExecuteNonQuery();
-                            }
+                    if (!IsItemInMenu(connection, itemId))
+                    {
+                        return "ItemId is not available in the menu for the specified meal type.";
                     }
+
+                    (string sentimentComment, float sentimentScore, string commentSentiments) = CalculateSentimentScore(comment);
+                    var sentimentData = GetSentimentData(connection, itemId);
+
+                    InsertFeedback(connection, userId, itemId, comment, rating);
+
+                    int voteCount = UpdateVoteCount(connection, itemId);
+
+                    if (sentimentData.HasValue)
+                    {
+                        UpdateSentimentData(connection, itemId, rating, sentimentScore, commentSentiments, sentimentData.Value, voteCount);
+                    }
+                    else
+                    {
+                        InsertNewSentimentData(connection, itemId, rating, sentimentComment, sentimentScore, commentSentiments, voteCount);
+                    }
+
                     return "Feedback submitted successfully.";
                 }
-
             }
             catch (Exception ex)
             {
@@ -315,6 +318,108 @@ namespace CafeteriaRecommendationSystem.Services
             }
         }
 
+        private static (int sentimentId, double existingOverallRating, double existingSentimentScore, string existingcommentSentiments)? GetSentimentData(MySqlConnection connection, int itemId)
+        {
+            const string query = "SELECT SentimentId, OverallRating, SentimentScore, CommentSentiments FROM Sentiment WHERE ItemId = @ItemId";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        int sentimentId = reader.GetInt32("SentimentId");
+                        double existingOverallRating = reader["OverallRating"] != DBNull.Value ? Convert.ToDouble(reader["OverallRating"]) : 0.0;
+                        double existingSentimentScore = reader["SentimentScore"] != DBNull.Value ? Convert.ToDouble(reader["SentimentScore"]) : 0.0;
+                        string existingCommentSentiments = reader["CommentSentiments"] != DBNull.Value ? reader["CommentSentiments"].ToString() : string.Empty;
+
+                        return (sentimentId, existingOverallRating, existingSentimentScore, existingCommentSentiments);
+                    }
+                }
+            }
+            return null;
+        }
+        private static bool ItemExists(MySqlConnection connection, int itemId)
+        {
+            const string query = "SELECT COUNT(*) FROM item WHERE ItemId = @ItemId";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+            }
+        }
+
+        private static int UpdateVoteCount(MySqlConnection connection, int itemId)
+        {
+            const string query = "SELECT VoteCount FROM Sentiment WHERE ItemId = @ItemId";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value ? Convert.ToInt32(result) + 1 : 1;
+            }
+        }
+        private static void InsertFeedback(MySqlConnection connection, int userId, int itemId, string comment, int rating)
+        {
+            const string query = "INSERT INTO Feedback (UserId, ItemId, Comment, Rating, FeedbackDate) VALUES (@UserId, @ItemId, @Comment, @Rating, NOW())";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@UserId", userId);
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                cmd.Parameters.AddWithValue("@Comment", comment);
+                cmd.Parameters.AddWithValue("@Rating", rating);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void UpdateSentimentData(MySqlConnection connection, int itemId, int rating, float sentimentScore, string commentSentiments, (int sentimentId, double existingOverallRating, double existingSentimentScore, string existingCommentSentiments) sentimentData, int voteCount)
+        {
+            float overallSentimentScore = (float)((sentimentData.existingSentimentScore + sentimentScore) / 2.0);
+            float overallRating = (float)((sentimentData.existingOverallRating + rating) / 2.0);
+
+            string sentimentComment;
+            if (overallSentimentScore > 0)
+            {
+                sentimentComment = "Positive";
+            }
+            else if (overallSentimentScore < 0)
+            {
+                sentimentComment = "Negative";
+            }
+            else
+            {
+                sentimentComment = "Neutral";
+            }
+
+            string updatedCommentSentiments = !string.IsNullOrEmpty(sentimentData.existingCommentSentiments)? $"{sentimentData.existingCommentSentiments}, {commentSentiments}" : commentSentiments;
+
+            const string query = "UPDATE Sentiment SET OverallRating = @OverallRating, OverallCommentSentiment = @OverallCommentSentiment, SentimentScore = @SentimentScore, VoteCount = @VoteCount, CommentSentiments = @CommentSentiments WHERE ItemId = @ItemId";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@OverallRating", overallRating);
+                cmd.Parameters.AddWithValue("@OverallCommentSentiment", sentimentComment);
+                cmd.Parameters.AddWithValue("@SentimentScore", overallSentimentScore);
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                cmd.Parameters.AddWithValue("@VoteCount", voteCount);
+                cmd.Parameters.AddWithValue("@CommentSentiments", updatedCommentSentiments);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void InsertNewSentimentData(MySqlConnection connection, int itemId, int rating, string sentimentComment, float sentimentScore, string commentSentiments, int voteCount)
+        {
+            const string query = "INSERT INTO Sentiment (ItemId, OverallRating, OverallCommentSentiment, SentimentScore, VoteCount, CommentSentiments) VALUES (@ItemId, @OverallRating, @OverallCommentSentiment, @SentimentScore, @VoteCount, @CommentSentiments)";
+            using (var cmd = new MySqlCommand(query, connection))
+            {
+                cmd.Parameters.AddWithValue("@ItemId", itemId);
+                cmd.Parameters.AddWithValue("@OverallRating", rating);
+                cmd.Parameters.AddWithValue("@OverallCommentSentiment", sentimentComment);
+                cmd.Parameters.AddWithValue("@SentimentScore", sentimentScore);
+                cmd.Parameters.AddWithValue("@CommentSentiments", commentSentiments);
+                cmd.Parameters.AddWithValue("@VoteCount", voteCount);
+                cmd.ExecuteNonQuery();
+            }
+        }
 
         public static (string sentiment, float sentimentScore, string commentSentiments) CalculateSentimentScore(string comment)
         {

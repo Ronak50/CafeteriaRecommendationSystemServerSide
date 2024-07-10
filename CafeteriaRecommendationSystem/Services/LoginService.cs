@@ -118,8 +118,7 @@ namespace CafeteriaRecommendationSystem.Services
             }
             return notifications;
         }
-
-    public DateTime? GetLastLoginTime(int userId, DateTime currentLoginTime)
+        public DateTime? GetLastLoginTime(int userId, DateTime currentLoginTime)
         {
             using (MySqlConnection conn = DatabaseUtility.GetConnection())
             {
