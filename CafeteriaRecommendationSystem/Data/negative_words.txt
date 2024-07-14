@@ -20,3 +20,53 @@ angry
 not good
 not
 tasteless
+low
+Bland
+Overcooked
+Undercooked
+Stale
+Soggy
+Burnt
+Too salty
+Too sweet
+Too bitter
+Greasy
+Cold
+Tasteless
+Unappetizing
+Poor presentation
+Dry
+Overpriced
+Unhealthy
+Disgusting
+Inedible
+Too spicy
+Watery
+Lacked flavor
+Over-seasoned
+Off-putting smell
+Clumpy
+Watery sauce
+Rubbery texture
+Gristly meat
+Bones in fish
+Hard as a rock
+Chewy
+Gritty
+Poor quality ingredients
+Unpleasant aftertaste
+Unimaginative
+Microwaved
+Not fresh
+Messy
+Contaminated
+Underwhelming
+Disgusting texture
+Chemical taste
+Moldy
+Tastes artificial
+Inconsistent quality
+Over-garlicky
+Tastes burnt
+No seasoning
+Tastes freezer burnt

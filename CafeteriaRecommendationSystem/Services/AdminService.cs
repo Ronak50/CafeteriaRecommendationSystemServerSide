@@ -1,5 +1,4 @@
-﻿using CafeteriaRecommendationSystem.Models;
-using MySql.Data.MySqlClient;
+﻿using MySql.Data.MySqlClient;
 using System;
 using System.Text;
 using System.IO;
@@ -29,6 +28,11 @@ namespace CafeteriaRecommendationSystem.Services
 
         public static string DiscardMenuItemList()
         {
+            DateTime today = DateTime.Now;
+            if (today.Day != 1)
+            {
+                return "Food items can only be removed on the first day of the month.";
+            }
             try
             {
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
@@ -88,7 +92,7 @@ namespace CafeteriaRecommendationSystem.Services
             string[] paramParts = parameters.Split(';');
             if (paramParts.Length < 8)
             {
-                return "Admin: Invalid parameters for adding item";
+                return "Invalid parameters for adding item";
             }
 
             string name = paramParts[0];
@@ -102,7 +106,7 @@ namespace CafeteriaRecommendationSystem.Services
 
             if (!decimal.TryParse(paramParts[1], out price) || !bool.TryParse(paramParts[2], out availabilityStatus))
             {
-                return "Admin: Invalid parameters for adding item";
+                return "Invalid parameters for adding item";
             }
 
             try
@@ -111,14 +115,14 @@ namespace CafeteriaRecommendationSystem.Services
                 {
                     connection.Open();
                     int mealTypeId;
-                    string getMealTypeIdQuery = "SELECT meal_type_id FROM MealType WHERE type = @Type";
+                    string getMealTypeIdQuery = "SELECT meal_type_id FROM MealType WHERE MealType = @Type";
                     using (MySqlCommand getMealTypeIdCmd = new MySqlCommand(getMealTypeIdQuery, connection))
                     {
                         getMealTypeIdCmd.Parameters.AddWithValue("@Type", mealType);
                         object result = getMealTypeIdCmd.ExecuteScalar();
                         if (result == null)
                         {
-                            return "Admin: Invalid meal type";
+                            return "Invalid meal type";
                         }
                         mealTypeId = Convert.ToInt32(result);
                     }
@@ -148,13 +152,13 @@ namespace CafeteriaRecommendationSystem.Services
                         insertNotificationCmd.Parameters.AddWithValue("@NotificationDate", DateTime.Now);
                         insertNotificationCmd.ExecuteNonQuery();
                     }
-                    return "Admin: Item added successfully";
+                    return "Item added successfully";
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to add item";
+                return "Failed to add item";
             }
         }
 
@@ -163,7 +167,7 @@ namespace CafeteriaRecommendationSystem.Services
             string[] paramParts = parameters.Split(';');
             if (paramParts.Length < 3)
             {
-                return "Admin: Invalid parameters for updating item";
+                return "Invalid parameters for updating item";
             }
 
             int itemId;
@@ -187,14 +191,14 @@ namespace CafeteriaRecommendationSystem.Services
                         command.Parameters.AddWithValue("@Price", price);
                         command.Parameters.AddWithValue("@AvailabilityStatus", availabilityStatus);
                         command.ExecuteNonQuery();
-                        return "Admin: Item updated successfully";
+                        return "Item updated successfully";
                     }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to update item";
+                return "Failed to update item";
             }
         }
 
@@ -204,7 +208,7 @@ namespace CafeteriaRecommendationSystem.Services
 
             if (!int.TryParse(parameters, out itemId))
             {
-                return "Admin: Invalid item ID for deletion";
+                return "Invalid item ID for deletion";
             }
             try
             {
@@ -219,7 +223,7 @@ namespace CafeteriaRecommendationSystem.Services
 
                         if (count == 0)
                         {
-                            return "Admin: Item ID not found";
+                            return "Item ID not found";
                         }
                     }
                     string deleteQuery = "DELETE FROM Item WHERE ItemId = @ItemId";
@@ -227,7 +231,7 @@ namespace CafeteriaRecommendationSystem.Services
                     {
                         deleteCmd.Parameters.AddWithValue("@ItemId", itemId);
                         deleteCmd.ExecuteNonQuery();
-                        return "Admin: Item deleted successfully";
+                        return "Item deleted successfully";
                     }
                 }
             }
@@ -235,7 +239,7 @@ namespace CafeteriaRecommendationSystem.Services
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to delete item";
+                return "Failed to delete item";
             }
         }
 
@@ -259,29 +263,29 @@ namespace CafeteriaRecommendationSystem.Services
                             {
                                 StringBuilder result = new StringBuilder();
                                 result.AppendLine("\nItems List:");
-                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------------");
-                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-14} {"Availability",-20} {"Meal Type",-16} {"Diet",-13} {"Spice Level",-14} {"Food Preference",-20} {"Sweet Tooth",-10}");
-                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------------");
+                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------");
+                                result.AppendLine($"{"ID",-5} {"Name",-20} {"Price",-12} {"Availability",-15} {"Meal Type",-12} {"Diet Preference",-20} {"Spice Level",-12} {"Food Preference",-20} {"Sweet Tooth",-12}");
+                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------");
 
                                 while (reader.Read())
                                 {
-                                    result.AppendLine($"{reader.GetInt32("ItemId"),-5} " + 
+                                    result.AppendLine(
+                                        $"{reader.GetInt32("ItemId"),-5} " + 
                                         $"{reader.GetString("Name"),-20} " +
-                                        $"Rs. {reader.GetDecimal("Price"),-14:f2} " +
-                                        $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-20} " +
-                                        $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-16}" +
-                                        $"{(reader.IsDBNull(reader.GetOrdinal("DietPreference")) ? "N/A" : reader.GetString("DietPreference")),-13} " +
-                                        $"{(reader.IsDBNull(reader.GetOrdinal("SpiceLevel")) ? "N/A" : reader.GetString("SpiceLevel")),-14} " +
+                                        $"Rs. {reader.GetDecimal("Price"),-10:f2} " +
+                                        $"{(reader.GetBoolean("AvailabilityStatus") ? "True" : "False"),-15} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("MealType")) ? "N/A" : reader.GetString("MealType")),-12}" +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("DietPreference")) ? "N/A" : reader.GetString("DietPreference")),-20} " +
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SpiceLevel")) ? "N/A" : reader.GetString("SpiceLevel")),-12} " +
                                         $"{(reader.IsDBNull(reader.GetOrdinal("FoodPreference")) ? "N/A" : reader.GetString("FoodPreference")),-20} " +
-                                        $"{(reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? "N/A" : reader.GetString("SweetTooth")),-10}");
+                                        $"{(reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? "N/A" : reader.GetString("SweetTooth")),-12}");
                                 }
-                                result.AppendLine("-------------------------------------------------------------------------------------------------------------------------------------------------------\n");
-                                result.AppendLine("-------------------------------------------------------------------------------------------------------------------------------------------------------");
+                                result.AppendLine("--------------------------------------------------------------------------------------------------------------------------------------------\n");
                                 return result.ToString();
                             }
                             else
                             {
-                                return "Admin: No items found";
+                                return "No items found";
                             }
                         }
                     }
@@ -290,7 +294,7 @@ namespace CafeteriaRecommendationSystem.Services
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to retrieve items";
+                return "Failed to retrieve items";
             }
         }
 

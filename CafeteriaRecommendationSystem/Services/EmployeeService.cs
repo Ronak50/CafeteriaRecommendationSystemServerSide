@@ -1,6 +1,5 @@
 ﻿using CafeteriaRecommendationSystem.Models;
 using MySql.Data.MySqlClient;
-using Mysqlx.Crud;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,7 +33,7 @@ namespace CafeteriaRecommendationSystem.Services
             string[] paramParts = parameters.Split(';');
             if (paramParts.Length < 5)
             {
-                return "Admin: Invalid parameters for updating profile";
+                return "Invalid parameters for updating profile";
             }
 
             int userId;
@@ -45,7 +44,7 @@ namespace CafeteriaRecommendationSystem.Services
 
             if (!int.TryParse(paramParts[0], out userId))
             {
-                return "Admin: Invalid user ID";
+                return "Invalid user ID";
             }
 
             try
@@ -71,7 +70,7 @@ namespace CafeteriaRecommendationSystem.Services
                                 insertCommand.Parameters.AddWithValue("@FoodPreference", foodPreference);
                                 insertCommand.Parameters.AddWithValue("@SweetTooth", sweetToothPreference);
                                 insertCommand.ExecuteNonQuery();
-                                return "Admin: Profile created successfully";
+                                return "Profile created successfully";
                             }
                         }
                         else
@@ -85,7 +84,7 @@ namespace CafeteriaRecommendationSystem.Services
                                 updateCommand.Parameters.AddWithValue("@FoodPreference", foodPreference);
                                 updateCommand.Parameters.AddWithValue("@SweetTooth", sweetToothPreference);
                                 updateCommand.ExecuteNonQuery();
-                                return "Admin: Profile updated successfully";
+                                return "Profile updated successfully";
                             }
                         }
                     }
@@ -94,7 +93,7 @@ namespace CafeteriaRecommendationSystem.Services
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to update profile";
+                return "Failed to update profile";
             }
         }
 
@@ -127,13 +126,11 @@ namespace CafeteriaRecommendationSystem.Services
             return notifications.Length > 0 ? notifications.ToString() : "No new notifications.";
         }
 
-        public static string GiveVoteForItem(string itemIdParam)
+        public static string GiveVoteForItem(string parameters)
         {
-            int itemId;
-            if (!int.TryParse(itemIdParam, out itemId))
-            {
-                return "Invalid itemId. It should be an integer.";
-            }
+            string[] feedbackParams = parameters.Split(';');
+            int userId = int.Parse(feedbackParams[0]);
+            int itemId = int.Parse(feedbackParams[1]);
 
             try
             {
@@ -142,8 +139,20 @@ namespace CafeteriaRecommendationSystem.Services
                     connection.Open();
                     if (!IsItemInMenu(connection, itemId))
                     {
-                        return "ItemId is not available in the menu for the specified meal type.";
+                        return "Given ItemId is not available in the menu, Please enter a valid Item ID";
                     }
+
+                    string voteCheckQuery = "SELECT VoteTime FROM EmployeeVote WHERE UserId = @UserId AND VoteTime > NOW() - INTERVAL 24 HOUR";
+                    using (MySqlCommand voteCheckCmd = new MySqlCommand(voteCheckQuery, connection))
+                    {
+                        voteCheckCmd.Parameters.AddWithValue("@UserId", userId);
+                        var lastVoteTime = voteCheckCmd.ExecuteScalar() as DateTime?;
+                        if (lastVoteTime.HasValue)
+                        {
+                            return "You have already voted in the last 24 hours. You cannot vote again at this time.";
+                        }
+                    }
+
 
                     string checkQuery = "SELECT COUNT(*) FROM EmployeeVote WHERE ItemId = @ItemId";
 
@@ -167,15 +176,15 @@ namespace CafeteriaRecommendationSystem.Services
                         }
                         else
                         {
-                            string insertQuery = "INSERT INTO EmployeeVote (ItemId, VoteTime, VoteCount) VALUES (@ItemId, CURRENT_TIMESTAMP, 1)";
+                            string insertQuery = "INSERT INTO EmployeeVote (ItemId,UserId, VoteTime, VoteCount) VALUES (@ItemId, @UserId, CURRENT_TIMESTAMP, 1)";
 
                             using (MySqlCommand insertCmd = new MySqlCommand(insertQuery, connection))
                             {
                                 insertCmd.Parameters.AddWithValue("@ItemId", itemId);
-
+                                insertCmd.Parameters.AddWithValue("@UserId", userId);
                                 int insertResult = insertCmd.ExecuteNonQuery();
 
-                                 return insertResult > 0 ? "Vote successfully recorded." : "Failed to record vote.";
+                                return insertResult > 0 ? "Vote successfully recorded." : "Failed to record vote.";
                             }
                         }
                     }
@@ -195,7 +204,7 @@ namespace CafeteriaRecommendationSystem.Services
             string mealType = paramParts[1];
             if (!int.TryParse(paramParts[0], out userId))
             {
-                return "Admin: Invalid user ID";
+                return "Invalid user ID";
             }
 
             try
@@ -226,24 +235,27 @@ namespace CafeteriaRecommendationSystem.Services
                         using (MySqlDataReader reader = cmd.ExecuteReader())
                         {
                             StringBuilder menuList = new StringBuilder();
-                            menuList.AppendLine("\nMenu Recommendations:");
-                            menuList.AppendLine("----------------------------------------------------------------------------------------------------------");
-                            menuList.AppendLine($"{"Recommendation ID",-20} {"Item ID",-10} {"Name",-25} {"Price",-10} {"Availability",-15} {"Rating",-10} {"Sentiment Comment",-20}");
-                            menuList.AppendLine("----------------------------------------------------------------------------------------------------------");
+                            menuList.AppendLine("\nMenu Items:");
+                            menuList.AppendLine("---------------------------------------------------------------------------------------------------------------------------------------------");
+                            menuList.AppendLine($"{"Item ID",-10} {"Name",-15} {"Price",-10} {"Availability",-15} {"Rating",-10} {"Sentiment Comment",-20} {"Diet Preference",-15} {"Spice Level",-10} {"Food Preference",-15} {"Sweet Tooth",-10}");
+                            menuList.AppendLine("---------------------------------------------------------------------------------------------------------------------------------------------");
 
                             while (reader.Read())
                             {
-                                int recommendationId = reader.GetInt32("RecommendationId");
                                 int itemId = reader.GetInt32("ItemId");
                                 string itemName = reader.GetString("Name");
                                 decimal price = reader.GetDecimal("Price");
                                 bool availabilityStatus = reader.GetBoolean("AvailabilityStatus");
                                 float overallRating = reader.GetFloat("OverallRating");
                                 string overallCommentSentiment = reader.IsDBNull(reader.GetOrdinal("OverallCommentSentiment")) ? string.Empty : reader.GetString("OverallCommentSentiment");
+                                string dietPreference = reader.IsDBNull(reader.GetOrdinal("DietPreference")) ? string.Empty : reader.GetString("DietPreference");
+                                string spiceLevel = reader.IsDBNull(reader.GetOrdinal("SpiceLevel")) ? string.Empty : reader.GetString("SpiceLevel");
+                                string foodPreference = reader.IsDBNull(reader.GetOrdinal("FoodPreference")) ? string.Empty : reader.GetString("FoodPreference");
+                                string sweetTooth = reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? string.Empty : reader.GetString("SweetTooth");
 
-                                menuList.AppendLine($"{recommendationId,-20} {itemId,-10} {itemName,-25} Rs.{price,-10} {(availabilityStatus ? "Available" : "Not Available"),-15} {overallRating,-10} {overallCommentSentiment,-20}");
+                                menuList.AppendLine($"{itemId,-10} {itemName,-15} Rs.{price,-10} {(availabilityStatus ? "Available" : "Not Available"),-15} {overallRating,-10} {overallCommentSentiment,-20} {dietPreference,-15} {spiceLevel,-10} {foodPreference,-15} {sweetTooth,-10}");
                             }
-
+                            menuList.AppendLine("---------------------------------------------------------------------------------------------------------------------------------------------\n");
                             return menuList.ToString();
                         }
                     }
@@ -258,7 +270,7 @@ namespace CafeteriaRecommendationSystem.Services
 
         public static bool IsItemInMenu(MySqlConnection connection, int itemId)
         {
-            string query = "SELECT COUNT(*) FROM Item WHERE ItemId = @ItemId";
+            string query = "SELECT COUNT(*) FROM Recommendation WHERE ItemId = @ItemId";
 
             using (MySqlCommand cmd = new MySqlCommand(query, connection))
             {
@@ -282,14 +294,20 @@ namespace CafeteriaRecommendationSystem.Services
                 {
                     connection.Open();
 
-                    if (!ItemExists(connection, itemId))
-                    {
-                        return "ItemId does not exist in the item table.";
-                    }
-
                     if (!IsItemInMenu(connection, itemId))
                     {
-                        return "ItemId is not available in the menu for the specified meal type.";
+                        return "Given ItemId is not available in the menu, Please enter a valid Item ID";
+                    }
+
+                    string feedbackCheckQuery = "SELECT FeedbackDate FROM Feedback WHERE UserId = @UserId AND FeedbackDate > NOW() - INTERVAL 24 HOUR";
+                    using (MySqlCommand feedbackCheckCmd = new MySqlCommand(feedbackCheckQuery, connection))
+                    {
+                        feedbackCheckCmd.Parameters.AddWithValue("@UserId", userId);
+                        var lastFeedbackTime = feedbackCheckCmd.ExecuteScalar() as DateTime?;
+                        if (lastFeedbackTime.HasValue)
+                        {
+                            return "You have already give feedback in the last 24 hours. You cannot give feedback again at this time.";
+                        }
                     }
 
                     (string sentimentComment, float sentimentScore, string commentSentiments) = CalculateSentimentScore(comment);
@@ -338,15 +356,6 @@ namespace CafeteriaRecommendationSystem.Services
                 }
             }
             return null;
-        }
-        private static bool ItemExists(MySqlConnection connection, int itemId)
-        {
-            const string query = "SELECT COUNT(*) FROM item WHERE ItemId = @ItemId";
-            using (var cmd = new MySqlCommand(query, connection))
-            {
-                cmd.Parameters.AddWithValue("@ItemId", itemId);
-                return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
-            }
         }
 
         private static int UpdateVoteCount(MySqlConnection connection, int itemId)

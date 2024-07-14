@@ -2,7 +2,6 @@
 using System;
 using System.Text;
 using System.IO;
-using CafeteriaRecommendationSystem.Models;
 
 namespace CafeteriaRecommendationSystem.Services
 {
@@ -136,6 +135,11 @@ namespace CafeteriaRecommendationSystem.Services
 
         public static string RemoveFoodItem(string itemId)
         {
+            DateTime today = DateTime.Now;
+            if (today.Day != 1)
+            {
+                return "Food items can only be removed on the first day of the month.";
+            }
             try
             {
                 string itemName = GetItemNameById(itemId);
@@ -252,12 +256,23 @@ namespace CafeteriaRecommendationSystem.Services
 
                 if (sentimentId == -1)
                 {
-                    return "Failed to retrieve sentimentId for itemId.";
+                    return "No sentiment comments are available for this particular ItemID";
                 }
 
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
+                    string checkQuery = "SELECT COUNT(*) FROM Recommendation WHERE ItemId = @ItemId";
+                    using (MySqlCommand checkCommand = new MySqlCommand(checkQuery, connection))
+                    {
+                        checkCommand.Parameters.AddWithValue("@ItemId", itemId);
+                        int count = Convert.ToInt32(checkCommand.ExecuteScalar());
+
+                        if (count > 0)
+                        {
+                            return "Item is already recommended.";
+                        }
+                    }
                     string insertQuery = @"INSERT INTO Recommendation (ItemId, SentimentId)
                                    VALUES (@ItemId, @SentimentId)";
                     MySqlCommand command = new MySqlCommand(insertQuery, connection);
@@ -343,9 +358,9 @@ namespace CafeteriaRecommendationSystem.Services
                             if (reader.HasRows)
                             {
                                 recommendedItems.AppendLine("\nRecommended Items:");
-                                recommendedItems.AppendLine("-------------------------------------------------------------");
+                                recommendedItems.AppendLine("------------------------------------------------------");
                                 recommendedItems.AppendLine($"{"ItemId",-10} {"Rating",-10} {"Sentiment Score",-18} {"Votes",-10}");
-                                recommendedItems.AppendLine("-------------------------------------------------------------");
+                                recommendedItems.AppendLine("------------------------------------------------------");
 
                                 while (reader.Read())
                                 {
@@ -409,12 +424,12 @@ namespace CafeteriaRecommendationSystem.Services
                                         $"{(reader.IsDBNull(reader.GetOrdinal("FoodPreference")) ? "N/A" : reader.GetString("FoodPreference")),-20} " +
                                         $"{(reader.IsDBNull(reader.GetOrdinal("SweetTooth")) ? "N/A" : reader.GetString("SweetTooth")),-12}");
                             }
-
+                                result.AppendLine("-------------------------------------------------------------------------------------------------------------------------------\n");
                                 return result.ToString();
                             }
                             else
                             {
-                                return "Admin: No items found";
+                                return "No items found";
                             }
                         }
                     }
@@ -423,7 +438,7 @@ namespace CafeteriaRecommendationSystem.Services
             catch (Exception ex)
             {
                 Console.WriteLine("Database exception: " + ex.Message);
-                return "Admin: Failed to retrieve items";
+                return "Failed to retrieve items";
             }
         }
 

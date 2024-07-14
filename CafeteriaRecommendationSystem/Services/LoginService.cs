@@ -11,10 +11,8 @@ namespace CafeteriaRecommendationSystem.Services
 
         public static LoginResult LoginUser(string email)
         {
-
             try
             {
-
                 using (MySqlConnection connection = DatabaseUtility.GetConnection())
                 {
                     connection.Open();
@@ -61,6 +59,12 @@ namespace CafeteriaRecommendationSystem.Services
             using (MySqlConnection conn = DatabaseUtility.GetConnection())
             {
                 conn.Open();
+
+                string deleteOldSessionsQuery = "DELETE FROM UserSession WHERE UserID = @UserID AND SessionID NOT IN ( SELECT SessionID FROM ( SELECT SessionID FROM UserSession WHERE UserID = @UserID ORDER BY LoginTime DESC LIMIT 1 ) AS subquery)";
+                MySqlCommand deleteCmd = new MySqlCommand(deleteOldSessionsQuery, conn);
+                deleteCmd.Parameters.AddWithValue("@UserID", userId);
+                deleteCmd.ExecuteNonQuery();
+
                 string insertLoginQuery = "INSERT INTO UserSession (UserID, LoginTime) VALUES (@UserID, NOW())";
                 MySqlCommand cmd = new MySqlCommand(insertLoginQuery, conn);
                 cmd.Parameters.AddWithValue("@UserID", userId);
